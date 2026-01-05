@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
@@ -12,11 +12,18 @@ import { useToast } from '@/hooks/use-toast';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate('/');
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,9 +72,6 @@ const Login: React.FC = () => {
             </form>
             <p className="text-center text-sm text-muted-foreground mt-6">
               Don't have an account? <Link to="/signup" className="text-primary font-medium hover:underline">Sign up</Link>
-            </p>
-            <p className="text-center text-xs text-muted-foreground mt-4">
-              Admin: admin@store.com / admin123
             </p>
           </div>
         </motion.div>

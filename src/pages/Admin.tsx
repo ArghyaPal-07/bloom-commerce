@@ -1,22 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Package, ShoppingBag, DollarSign, TrendingUp, Plus, Edit, Trash2, Eye } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth, Order } from '@/context/AuthContext';
-import { products as initialProducts, categories } from '@/data/products';
+import { useProducts, categories } from '@/hooks/useProducts';
 
-const statusOptions: Order['status'][] = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+const statusOptions = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
 
 const Admin: React.FC = () => {
-  const { user, getAllOrders, updateOrderStatus } = useAuth();
+  const { isAdmin, orders, updateOrderStatus, fetchOrders } = useAuth();
+  const { data: products = [], isLoading: productsLoading } = useProducts();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'orders'>('dashboard');
-  const orders = getAllOrders();
 
-  if (!user?.isAdmin) {
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  if (!isAdmin) {
     return <Navigate to="/login" replace />;
   }
 
@@ -24,7 +27,7 @@ const Admin: React.FC = () => {
   const stats = [
     { label: 'Total Revenue', value: `$${totalRevenue.toFixed(2)}`, icon: DollarSign, color: 'bg-accent/10 text-accent' },
     { label: 'Total Orders', value: orders.length, icon: ShoppingBag, color: 'bg-primary/10 text-primary' },
-    { label: 'Products', value: initialProducts.length, icon: Package, color: 'bg-info/10 text-info' },
+    { label: 'Products', value: products.length, icon: Package, color: 'bg-info/10 text-info' },
     { label: 'Categories', value: categories.length, icon: TrendingUp, color: 'bg-warning/10 text-warning' },
   ];
 
@@ -41,7 +44,7 @@ const Admin: React.FC = () => {
           {/* Tabs */}
           <div className="flex gap-2 mb-8 border-b border-border">
             {['dashboard', 'products', 'orders'].map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-4 py-2 font-medium capitalize transition-colors ${activeTab === tab ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}>
+              <button key={tab} onClick={() => setActiveTab(tab as typeof activeTab)} className={`px-4 py-2 font-medium capitalize transition-colors ${activeTab === tab ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}>
                 {tab}
               </button>
             ))}
@@ -50,7 +53,7 @@ const Admin: React.FC = () => {
           {activeTab === 'dashboard' && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                {stats.map((stat, i) => (
+                {stats.map((stat) => (
                   <div key={stat.label} className="bg-card rounded-xl p-6 shadow-soft">
                     <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center mb-4`}>
                       <stat.icon className="h-6 w-6" />
@@ -65,12 +68,15 @@ const Admin: React.FC = () => {
                 {orders.slice(0, 5).map(order => (
                   <div key={order.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
                     <div>
-                      <p className="font-medium">#{order.id}</p>
-                      <p className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</p>
+                      <p className="font-medium">#{order.id.slice(0, 8)}</p>
+                      <p className="text-sm text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</p>
                     </div>
                     <span className="font-bold">${order.total.toFixed(2)}</span>
                   </div>
                 ))}
+                {orders.length === 0 && (
+                  <p className="text-muted-foreground text-center py-4">No orders yet</p>
+                )}
               </div>
             </motion.div>
           )}
@@ -94,7 +100,7 @@ const Admin: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {initialProducts.map(product => (
+                      {products.map(product => (
                         <tr key={product.id} className="border-b border-border">
                           <td className="p-4">
                             <div className="flex items-center gap-3">
@@ -103,8 +109,8 @@ const Admin: React.FC = () => {
                             </div>
                           </td>
                           <td className="p-4 capitalize">{product.category.replace('-', ' ')}</td>
-                          <td className="p-4">${product.price.toFixed(2)}</td>
-                          <td className="p-4">{product.stockCount}</td>
+                          <td className="p-4">${Number(product.price).toFixed(2)}</td>
+                          <td className="p-4">{product.in_stock ? 'In Stock' : 'Out of Stock'}</td>
                           <td className="p-4 text-right">
                             <Button variant="ghost" size="icon"><Eye className="h-4 w-4" /></Button>
                             <Button variant="ghost" size="icon"><Edit className="h-4 w-4" /></Button>
@@ -139,12 +145,12 @@ const Admin: React.FC = () => {
                     <tbody>
                       {orders.map(order => (
                         <tr key={order.id} className="border-b border-border">
-                          <td className="p-4 font-medium">#{order.id}</td>
-                          <td className="p-4">{order.shippingAddress.firstName} {order.shippingAddress.lastName}</td>
-                          <td className="p-4">{new Date(order.createdAt).toLocaleDateString()}</td>
+                          <td className="p-4 font-medium">#{order.id.slice(0, 8)}</td>
+                          <td className="p-4">{order.shipping_address?.firstName} {order.shipping_address?.lastName}</td>
+                          <td className="p-4">{new Date(order.created_at).toLocaleDateString()}</td>
                           <td className="p-4 font-bold">${order.total.toFixed(2)}</td>
                           <td className="p-4">
-                            <Select value={order.status} onValueChange={(value) => updateOrderStatus(order.id, value as Order['status'])}>
+                            <Select value={order.status} onValueChange={(value) => updateOrderStatus(order.id, value)}>
                               <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 {statusOptions.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
