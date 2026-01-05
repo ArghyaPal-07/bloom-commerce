@@ -15,8 +15,9 @@ import {
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import ProductCard from '@/components/products/ProductCard';
-import { getProductById, getProductsByCategory } from '@/data/products';
+import { useProduct, useProducts } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useCart } from '@/context/CartContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -26,10 +27,36 @@ const ProductDetail: React.FC = () => {
   const { addToCart } = useCart();
   const { toast } = useToast();
   
-  const product = getProductById(id || '');
-  const [selectedImage, setSelectedImage] = useState(0);
+  const { data: product, isLoading } = useProduct(id || '');
+  const { data: categoryProducts = [] } = useProducts({ 
+    category: product?.category 
+  });
+  
   const [quantity, setQuantity] = useState(1);
   const [isAdded, setIsAdded] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 bg-background">
+          <div className="container mx-auto px-4 py-8">
+            <div className="grid lg:grid-cols-2 gap-12">
+              <Skeleton className="aspect-square rounded-xl" />
+              <div className="space-y-4">
+                <Skeleton className="h-8 w-32" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-10 w-32" />
+                <Skeleton className="h-24 w-full" />
+              </div>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   if (!product) {
     return (
@@ -46,12 +73,27 @@ const ProductDetail: React.FC = () => {
     );
   }
 
-  const relatedProducts = getProductsByCategory(product.category)
+  const relatedProducts = categoryProducts
     .filter(p => p.id !== product.id)
     .slice(0, 4);
 
   const handleAddToCart = () => {
-    addToCart(product, quantity);
+    addToCart({
+      id: product.id,
+      name: product.name,
+      description: product.description || '',
+      price: Number(product.price),
+      originalPrice: product.original_price ? Number(product.original_price) : undefined,
+      category: product.category,
+      image: product.image,
+      images: [product.image],
+      rating: product.rating || 0,
+      reviews: product.reviews_count || 0,
+      inStock: product.in_stock ?? true,
+      stockCount: 100,
+      featured: product.featured ?? false,
+      tags: [],
+    }, quantity);
     setIsAdded(true);
     toast({
       title: 'Added to cart',
@@ -60,9 +102,11 @@ const ProductDetail: React.FC = () => {
     setTimeout(() => setIsAdded(false), 2000);
   };
 
-  const discountPercentage = product.originalPrice
-    ? Math.round((1 - product.price / product.originalPrice) * 100)
+  const discountPercentage = product.original_price
+    ? Math.round((1 - Number(product.price) / Number(product.original_price)) * 100)
     : null;
+
+  const inStock = product.in_stock ?? true;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -79,39 +123,18 @@ const ProductDetail: React.FC = () => {
           </Link>
 
           <div className="grid lg:grid-cols-2 gap-12">
-            {/* Images */}
+            {/* Image */}
             <motion.div
               initial={{ opacity: 0, x: -30 }}
               animate={{ opacity: 1, x: 0 }}
             >
-              <div className="aspect-square rounded-xl overflow-hidden bg-muted mb-4">
+              <div className="aspect-square rounded-xl overflow-hidden bg-muted">
                 <img
-                  src={product.images[selectedImage]}
+                  src={product.image}
                   alt={product.name}
                   className="w-full h-full object-cover"
                 />
               </div>
-              {product.images.length > 1 && (
-                <div className="flex gap-3">
-                  {product.images.map((image, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setSelectedImage(index)}
-                      className={`w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${
-                        selectedImage === index
-                          ? 'border-primary'
-                          : 'border-transparent opacity-60 hover:opacity-100'
-                      }`}
-                    >
-                      <img
-                        src={image}
-                        alt={`${product.name} ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
             </motion.div>
 
             {/* Product Info */}
@@ -144,28 +167,28 @@ const ProductDetail: React.FC = () => {
                     <Star
                       key={i}
                       className={`h-5 w-5 ${
-                        i < Math.floor(product.rating)
+                        i < Math.floor(product.rating || 0)
                           ? 'fill-warning text-warning'
                           : 'text-muted'
                       }`}
                     />
                   ))}
                 </div>
-                <span className="font-medium">{product.rating}</span>
+                <span className="font-medium">{product.rating || 0}</span>
                 <span className="text-muted-foreground">
-                  ({product.reviews} reviews)
+                  ({product.reviews_count || 0} reviews)
                 </span>
               </div>
 
               {/* Price */}
               <div className="flex items-baseline gap-3">
                 <span className="text-3xl font-bold text-primary">
-                  ${product.price.toFixed(2)}
+                  ${Number(product.price).toFixed(2)}
                 </span>
-                {product.originalPrice && (
+                {product.original_price && (
                   <>
                     <span className="text-xl text-muted-foreground line-through">
-                      ${product.originalPrice.toFixed(2)}
+                      ${Number(product.original_price).toFixed(2)}
                     </span>
                     <span className="px-2 py-1 text-sm font-semibold bg-destructive text-destructive-foreground rounded-md">
                       Save {discountPercentage}%
@@ -181,12 +204,10 @@ const ProductDetail: React.FC = () => {
 
               {/* Stock Status */}
               <div className="flex items-center gap-2">
-                {product.inStock ? (
+                {inStock ? (
                   <>
                     <Check className="h-5 w-5 text-accent" />
-                    <span className="text-accent font-medium">
-                      In Stock ({product.stockCount} available)
-                    </span>
+                    <span className="text-accent font-medium">In Stock</span>
                   </>
                 ) : (
                   <span className="text-destructive font-medium">Out of Stock</span>
@@ -208,8 +229,7 @@ const ProductDetail: React.FC = () => {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setQuantity(Math.min(product.stockCount, quantity + 1))}
-                    disabled={quantity >= product.stockCount}
+                    onClick={() => setQuantity(quantity + 1)}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -220,7 +240,7 @@ const ProductDetail: React.FC = () => {
                   size="lg"
                   className="flex-1"
                   onClick={handleAddToCart}
-                  disabled={!product.inStock || isAdded}
+                  disabled={!inStock || isAdded}
                 >
                   {isAdded ? (
                     <>
@@ -253,18 +273,6 @@ const ProductDetail: React.FC = () => {
                   <span className="text-sm font-medium">30-Day Returns</span>
                   <span className="text-xs text-muted-foreground">Hassle-free</span>
                 </div>
-              </div>
-
-              {/* Tags */}
-              <div className="flex flex-wrap gap-2 pt-4">
-                {product.tags.map(tag => (
-                  <span
-                    key={tag}
-                    className="px-3 py-1 text-xs bg-secondary text-secondary-foreground rounded-full"
-                  >
-                    {tag}
-                  </span>
-                ))}
               </div>
             </motion.div>
           </div>

@@ -1,14 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Filter, SlidersHorizontal, X } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import ProductCard from '@/components/products/ProductCard';
-import { products, categories, searchProducts } from '@/data/products';
+import { useProducts, categories, Product } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -32,6 +33,12 @@ const Products: React.FC = () => {
   const searchQuery = searchParams.get('search');
   const featuredParam = searchParams.get('featured');
 
+  const { data: products = [], isLoading } = useProducts({
+    category: categoryParam || undefined,
+    search: searchQuery || undefined,
+    featured: featuredParam === 'true' ? true : undefined,
+  });
+
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     categoryParam ? [categoryParam] : []
   );
@@ -39,42 +46,42 @@ const Products: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortOption>('featured');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  const maxPrice = Math.max(...products.map(p => p.price));
+  const maxPrice = products.length > 0 
+    ? Math.max(...products.map(p => Number(p.price)))
+    : 500;
+
+  // Update price range when products load
+  useEffect(() => {
+    if (products.length > 0) {
+      const max = Math.max(...products.map(p => Number(p.price)));
+      setPriceRange([0, Math.ceil(max)]);
+    }
+  }, [products.length]);
 
   const filteredProducts = useMemo(() => {
     let result = [...products];
 
-    // Search filter
-    if (searchQuery) {
-      result = searchProducts(searchQuery);
-    }
-
-    // Featured filter
-    if (featuredParam === 'true') {
-      result = result.filter(p => p.featured);
-    }
-
-    // Category filter
-    if (selectedCategories.length > 0) {
+    // Category filter (for client-side additional filtering)
+    if (selectedCategories.length > 0 && !categoryParam) {
       result = result.filter(p => selectedCategories.includes(p.category));
     }
 
     // Price filter
-    result = result.filter(p => p.price >= priceRange[0] && p.price <= priceRange[1]);
+    result = result.filter(p => Number(p.price) >= priceRange[0] && Number(p.price) <= priceRange[1]);
 
     // Sort
     switch (sortBy) {
       case 'price-low':
-        result.sort((a, b) => a.price - b.price);
+        result.sort((a, b) => Number(a.price) - Number(b.price));
         break;
       case 'price-high':
-        result.sort((a, b) => b.price - a.price);
+        result.sort((a, b) => Number(b.price) - Number(a.price));
         break;
       case 'rating':
-        result.sort((a, b) => b.rating - a.rating);
+        result.sort((a, b) => (b.rating || 0) - (a.rating || 0));
         break;
       case 'newest':
-        result.reverse();
+        result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         break;
       case 'featured':
       default:
@@ -82,7 +89,7 @@ const Products: React.FC = () => {
     }
 
     return result;
-  }, [searchQuery, featuredParam, selectedCategories, priceRange, sortBy]);
+  }, [products, selectedCategories, priceRange, sortBy, categoryParam]);
 
   const toggleCategory = (categoryId: string) => {
     setSelectedCategories(prev =>
@@ -114,9 +121,6 @@ const Products: React.FC = () => {
                 onCheckedChange={() => toggleCategory(category.id)}
               />
               <span className="text-sm">{category.name}</span>
-              <span className="text-xs text-muted-foreground ml-auto">
-                ({category.productCount})
-              </span>
             </label>
           ))}
         </div>
@@ -226,7 +230,21 @@ const Products: React.FC = () => {
               </div>
 
               {/* Products */}
-              {filteredProducts.length > 0 ? (
+              {isLoading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="bg-card rounded-xl overflow-hidden">
+                      <Skeleton className="aspect-square" />
+                      <div className="p-4 space-y-2">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-5 w-full" />
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-6 w-16" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredProducts.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                   {filteredProducts.map((product, index) => (
                     <ProductCard key={product.id} product={product} index={index} />

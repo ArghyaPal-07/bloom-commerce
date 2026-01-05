@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 
 const Profile: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, profile, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
 
   if (!user) {
@@ -26,8 +26,8 @@ const Profile: React.FC = () => {
     );
   }
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
@@ -42,8 +42,8 @@ const Profile: React.FC = () => {
                 <User className="h-10 w-10 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="font-display text-2xl font-bold">{user.name}</h1>
-                <p className="text-muted-foreground">{user.isAdmin ? 'Administrator' : 'Customer'}</p>
+                <h1 className="font-display text-2xl font-bold">{profile?.full_name || user.email}</h1>
+                <p className="text-muted-foreground">{isAdmin ? 'Administrator' : 'Customer'}</p>
               </div>
             </div>
             <div className="space-y-4 mb-8">
@@ -58,7 +58,7 @@ const Profile: React.FC = () => {
                 <Calendar className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Member since</p>
-                  <p className="font-medium">{new Date(user.createdAt).toLocaleDateString()}</p>
+                  <p className="font-medium">{new Date(profile?.created_at || user.created_at).toLocaleDateString()}</p>
                 </div>
               </div>
             </div>

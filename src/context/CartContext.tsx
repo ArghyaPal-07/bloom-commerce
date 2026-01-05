@@ -1,5 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Product } from '@/data/products';
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  originalPrice?: number;
+  category: string;
+  image: string;
+  images: string[];
+  rating: number;
+  reviews: number;
+  inStock: boolean;
+  stockCount: number;
+  featured: boolean;
+  tags: string[];
+}
 
 export interface CartItem {
   product: Product;

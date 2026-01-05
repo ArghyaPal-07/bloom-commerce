@@ -1,194 +1,328 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 
-export interface User {
+export interface Profile {
   id: string;
   email: string;
-  name: string;
-  isAdmin: boolean;
-  createdAt: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+export interface ShippingAddress {
+  firstName: string;
+  lastName: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
 }
 
 export interface Order {
   id: string;
-  userId: string;
-  items: {
-    productId: string;
-    productName: string;
-    price: number;
-    quantity: number;
-    image: string;
-  }[];
+  user_id: string;
+  status: string;
   total: number;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-  shippingAddress: {
-    firstName: string;
-    lastName: string;
-    address: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-  };
-  paymentMethod: string;
-  createdAt: string;
+  shipping_address: ShippingAddress | null;
+  created_at: string;
+  items?: OrderItem[];
+}
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  product_id: string | null;
+  product_name: string;
+  product_price: number;
+  quantity: number;
 }
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
+  profile: Profile | null;
   isLoading: boolean;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   signup: (name: string, email: string, password: string) => Promise<{ success: boolean; message: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   orders: Order[];
-  addOrder: (order: Omit<Order, 'id' | 'userId' | 'createdAt'>) => Order;
-  getAllOrders: () => Order[];
-  updateOrderStatus: (orderId: string, status: Order['status']) => void;
+  addOrder: (order: {
+    items: { productId: string; productName: string; price: number; quantity: number; image: string }[];
+    total: number;
+    status: string;
+    shippingAddress: ShippingAddress;
+    paymentMethod: string;
+  }) => Promise<Order | null>;
+  getAllOrders: () => Promise<Order[]>;
+  updateOrderStatus: (orderId: string, status: string) => Promise<void>;
+  fetchOrders: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const USERS_STORAGE_KEY = 'ecommerce-users';
-const CURRENT_USER_KEY = 'ecommerce-current-user';
-const ORDERS_STORAGE_KEY = 'ecommerce-orders';
-
-// Initialize default admin user
-const initializeDefaultAdmin = () => {
-  const users = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || '[]');
-  const adminExists = users.some((u: User) => u.email === 'admin@store.com');
-  if (!adminExists) {
-    const adminUser = {
-      id: 'admin-1',
-      email: 'admin@store.com',
-      password: 'admin123',
-      name: 'Admin User',
-      isAdmin: true,
-      createdAt: new Date().toISOString()
-    };
-    users.push(adminUser);
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-  }
-};
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
 
-  useEffect(() => {
-    initializeDefaultAdmin();
+  // Fetch user profile
+  const fetchProfile = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
     
-    // Load current user
-    const savedUser = localStorage.getItem(CURRENT_USER_KEY);
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (error) {
-        console.error('Failed to parse user:', error);
-      }
+    if (data && !error) {
+      setProfile(data as Profile);
+    }
+  };
+
+  // Check if user is admin
+  const checkAdminRole = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('role', 'admin')
+      .maybeSingle();
+    
+    setIsAdmin(!!data && !error);
+  };
+
+  // Fetch user orders
+  const fetchOrders = async () => {
+    if (!user) return;
+
+    let query = supabase
+      .from('orders')
+      .select(`
+        *,
+        order_items (*)
+      `)
+      .order('created_at', { ascending: false });
+
+    // If not admin, only fetch user's orders
+    if (!isAdmin) {
+      query = query.eq('user_id', user.id);
     }
 
-    // Load orders
-    const savedOrders = localStorage.getItem(ORDERS_STORAGE_KEY);
-    if (savedOrders) {
-      try {
-        setOrders(JSON.parse(savedOrders));
-      } catch (error) {
-        console.error('Failed to parse orders:', error);
-      }
-    }
+    const { data, error } = await query;
 
-    setIsLoading(false);
+    if (data && !error) {
+      setOrders(data.map(order => ({
+        id: order.id,
+        user_id: order.user_id,
+        status: order.status,
+        total: Number(order.total),
+        shipping_address: order.shipping_address as unknown as ShippingAddress | null,
+        created_at: order.created_at,
+        items: order.order_items,
+      })));
+    }
+  };
+
+  useEffect(() => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        // Defer Supabase calls with setTimeout
+        if (session?.user) {
+          setTimeout(() => {
+            fetchProfile(session.user.id);
+            checkAdminRole(session.user.id);
+          }, 0);
+        } else {
+          setProfile(null);
+          setIsAdmin(false);
+          setOrders([]);
+        }
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        fetchProfile(session.user.id);
+        checkAdminRole(session.user.id);
+      }
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
-    const users = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || '[]');
-    const foundUser = users.find((u: any) => u.email === email && u.password === password);
-    
-    if (foundUser) {
-      const { password: _, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userWithoutPassword));
-      return { success: true, message: 'Login successful!' };
+  // Fetch orders when user/admin status changes
+  useEffect(() => {
+    if (user) {
+      fetchOrders();
     }
-    
-    return { success: false, message: 'Invalid email or password' };
+  }, [user, isAdmin]);
+
+  const login = async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return { success: false, message: error.message };
+    }
+
+    return { success: true, message: 'Login successful!' };
   };
 
   const signup = async (name: string, email: string, password: string): Promise<{ success: boolean; message: string }> => {
-    const users = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || '[]');
+    const redirectUrl = `${window.location.origin}/`;
     
-    if (users.some((u: any) => u.email === email)) {
-      return { success: false, message: 'Email already exists' };
-    }
-
-    const newUser = {
-      id: `user-${Date.now()}`,
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      name,
-      isAdmin: false,
-      createdAt: new Date().toISOString()
-    };
+      options: {
+        emailRedirectTo: redirectUrl,
+        data: {
+          full_name: name,
+        }
+      }
+    });
 
-    users.push(newUser);
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    if (error) {
+      return { success: false, message: error.message };
+    }
 
-    const { password: _, ...userWithoutPassword } = newUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userWithoutPassword));
-    
     return { success: true, message: 'Account created successfully!' };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem(CURRENT_USER_KEY);
+    setSession(null);
+    setProfile(null);
+    setIsAdmin(false);
+    setOrders([]);
   };
 
-  const addOrder = (orderData: Omit<Order, 'id' | 'userId' | 'createdAt'>): Order => {
-    const newOrder: Order = {
-      ...orderData,
-      id: `order-${Date.now()}`,
-      userId: user?.id || 'guest',
-      createdAt: new Date().toISOString()
-    };
+  const addOrder = async (orderData: {
+    items: { productId: string; productName: string; price: number; quantity: number; image: string }[];
+    total: number;
+    status: string;
+    shippingAddress: ShippingAddress;
+    paymentMethod: string;
+  }): Promise<Order | null> => {
+    if (!user) return null;
 
-    const updatedOrders = [...orders, newOrder];
-    setOrders(updatedOrders);
-    localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updatedOrders));
+    // Create order - cast shipping address to Json compatible type
+    const shippingAddressJson = JSON.parse(JSON.stringify(orderData.shippingAddress));
     
-    return newOrder;
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert([{
+        user_id: user.id,
+        status: orderData.status,
+        total: orderData.total,
+        shipping_address: shippingAddressJson,
+      }])
+      .select()
+      .single();
+
+    if (orderError || !order) {
+      console.error('Failed to create order:', orderError);
+      return null;
+    }
+
+    // Create order items
+    const orderItems = orderData.items.map(item => ({
+      order_id: order.id,
+      product_id: item.productId,
+      product_name: item.productName,
+      product_price: item.price,
+      quantity: item.quantity,
+    }));
+
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(orderItems);
+
+    if (itemsError) {
+      console.error('Failed to create order items:', itemsError);
+    }
+
+    await fetchOrders();
+    return {
+      id: order.id,
+      user_id: order.user_id,
+      status: order.status,
+      total: Number(order.total),
+      shipping_address: order.shipping_address as unknown as ShippingAddress | null,
+      created_at: order.created_at,
+    };
   };
 
-  const getAllOrders = (): Order[] => {
-    return orders;
+  const getAllOrders = async (): Promise<Order[]> => {
+    if (!isAdmin) return orders;
+
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        order_items (*)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (data && !error) {
+      return data.map(order => ({
+        id: order.id,
+        user_id: order.user_id,
+        status: order.status,
+        total: Number(order.total),
+        shipping_address: order.shipping_address as unknown as ShippingAddress | null,
+        created_at: order.created_at,
+        items: order.order_items,
+      }));
+    }
+
+    return [];
   };
 
-  const updateOrderStatus = (orderId: string, status: Order['status']) => {
-    const updatedOrders = orders.map(order =>
-      order.id === orderId ? { ...order, status } : order
-    );
-    setOrders(updatedOrders);
-    localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updatedOrders));
-  };
+  const updateOrderStatus = async (orderId: string, status: string) => {
+    const { error } = await supabase
+      .from('orders')
+      .update({ status })
+      .eq('id', orderId);
 
-  // Filter orders for current user (admin sees all)
-  const userOrders = user?.isAdmin 
-    ? orders 
-    : orders.filter(order => order.userId === user?.id);
+    if (!error) {
+      await fetchOrders();
+    }
+  };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        session,
+        profile,
         isLoading,
+        isAdmin,
         login,
         signup,
         logout,
-        orders: userOrders,
+        orders,
         addOrder,
         getAllOrders,
-        updateOrderStatus
+        updateOrderStatus,
+        fetchOrders,
       }}
     >
       {children}

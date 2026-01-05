@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCart } from '@/context/CartContext';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, ShippingAddress } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
 type CheckoutStep = 'shipping' | 'payment' | 'review';
@@ -22,10 +22,9 @@ const Checkout: React.FC = () => {
   const [step, setStep] = useState<CheckoutStep>('shipping');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const [shippingInfo, setShippingInfo] = useState({
+  const [shippingInfo, setShippingInfo] = useState<ShippingAddress>({
     firstName: '',
     lastName: '',
-    email: user?.email || '',
     address: '',
     city: '',
     state: '',
@@ -56,7 +55,6 @@ const Checkout: React.FC = () => {
     const newErrors: Record<string, string> = {};
     if (!shippingInfo.firstName.trim()) newErrors.firstName = 'First name is required';
     if (!shippingInfo.lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!shippingInfo.email.trim()) newErrors.email = 'Email is required';
     if (!shippingInfo.address.trim()) newErrors.address = 'Address is required';
     if (!shippingInfo.city.trim()) newErrors.city = 'City is required';
     if (!shippingInfo.state.trim()) newErrors.state = 'State is required';
@@ -88,12 +86,22 @@ const Checkout: React.FC = () => {
   };
 
   const handlePlaceOrder = async () => {
+    if (!user) {
+      toast({
+        title: 'Please sign in',
+        description: 'You need to be signed in to place an order.',
+        variant: 'destructive',
+      });
+      navigate('/login');
+      return;
+    }
+
     setIsProcessing(true);
     
     // Simulate payment processing
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    const order = addOrder({
+    const order = await addOrder({
       items: items.map(item => ({
         productId: item.product.id,
         productName: item.product.name,
@@ -112,7 +120,7 @@ const Checkout: React.FC = () => {
     
     toast({
       title: 'Order Placed Successfully!',
-      description: `Your order #${order.id} has been confirmed.`,
+      description: order ? `Your order #${order.id.slice(0, 8)} has been confirmed.` : 'Your order has been confirmed.',
     });
 
     navigate('/orders');
@@ -220,17 +228,6 @@ const Checkout: React.FC = () => {
                         />
                         {errors.lastName && <p className="text-xs text-destructive mt-1">{errors.lastName}</p>}
                       </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={shippingInfo.email}
-                        onChange={(e) => setShippingInfo({ ...shippingInfo, email: e.target.value })}
-                        className={errors.email ? 'border-destructive' : ''}
-                      />
-                      {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
                     </div>
                     <div>
                       <Label htmlFor="address">Street Address</Label>
@@ -408,45 +405,33 @@ const Checkout: React.FC = () => {
             {/* Order Summary */}
             <div className="lg:col-span-1">
               <div className="bg-card rounded-xl p-6 shadow-soft sticky top-24">
-                <h2 className="font-display text-xl font-bold text-foreground mb-6">
-                  Order Summary
-                </h2>
-
-                <div className="space-y-3 mb-6">
+                <h2 className="font-display text-xl font-bold mb-4">Order Summary</h2>
+                <div className="space-y-3 mb-4">
                   {items.map(item => (
                     <div key={item.product.id} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">
                         {item.product.name} × {item.quantity}
                       </span>
-                      <span className="font-medium">
-                        ${(item.product.price * item.quantity).toFixed(2)}
-                      </span>
+                      <span>${(item.product.price * item.quantity).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
-
-                <div className="space-y-3 border-t border-border pt-4">
+                <div className="border-t border-border pt-4 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-medium">${total.toFixed(2)}</span>
+                    <span>${total.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Shipping</span>
-                    <span className="font-medium">
-                      {shipping === 0 ? <span className="text-accent">Free</span> : `$${shipping.toFixed(2)}`}
-                    </span>
+                    <span>{shipping === 0 ? 'Free' : `$${shipping.toFixed(2)}`}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tax (8%)</span>
-                    <span className="font-medium">${tax.toFixed(2)}</span>
+                    <span className="text-muted-foreground">Tax</span>
+                    <span>${tax.toFixed(2)}</span>
                   </div>
-                  <div className="border-t border-border pt-3">
-                    <div className="flex justify-between">
-                      <span className="font-semibold">Total</span>
-                      <span className="text-xl font-bold text-primary">
-                        ${grandTotal.toFixed(2)}
-                      </span>
-                    </div>
+                  <div className="flex justify-between font-bold text-lg pt-2 border-t border-border">
+                    <span>Total</span>
+                    <span className="text-primary">${grandTotal.toFixed(2)}</span>
                   </div>
                 </div>
               </div>

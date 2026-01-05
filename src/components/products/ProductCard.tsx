@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShoppingCart, Star } from 'lucide-react';
-import { Product } from '@/data/products';
+import { Product } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
 import { useToast } from '@/hooks/use-toast';
@@ -19,15 +19,30 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    addToCart(product);
+    addToCart({
+      id: product.id,
+      name: product.name,
+      description: product.description || '',
+      price: Number(product.price),
+      originalPrice: product.original_price ? Number(product.original_price) : undefined,
+      category: product.category,
+      image: product.image,
+      images: [product.image],
+      rating: product.rating || 0,
+      reviews: product.reviews_count || 0,
+      inStock: product.in_stock ?? true,
+      stockCount: 100,
+      featured: product.featured ?? false,
+      tags: [],
+    });
     toast({
       title: 'Added to cart',
       description: `${product.name} has been added to your cart.`,
     });
   };
 
-  const discountPercentage = product.originalPrice 
-    ? Math.round((1 - product.price / product.originalPrice) * 100)
+  const discountPercentage = product.original_price 
+    ? Math.round((1 - Number(product.price) / Number(product.original_price)) * 100)
     : null;
 
   return (
@@ -85,18 +100,18 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
             {/* Rating */}
             <div className="flex items-center gap-1 mt-2">
               <Star className="h-4 w-4 fill-warning text-warning" />
-              <span className="text-sm font-medium">{product.rating}</span>
-              <span className="text-xs text-muted-foreground">({product.reviews})</span>
+              <span className="text-sm font-medium">{product.rating || 0}</span>
+              <span className="text-xs text-muted-foreground">({product.reviews_count || 0})</span>
             </div>
 
             {/* Price */}
             <div className="flex items-center gap-2 mt-2">
               <span className="text-lg font-bold text-primary">
-                ${product.price.toFixed(2)}
+                ${Number(product.price).toFixed(2)}
               </span>
-              {product.originalPrice && (
+              {product.original_price && (
                 <span className="text-sm text-muted-foreground line-through">
-                  ${product.originalPrice.toFixed(2)}
+                  ${Number(product.original_price).toFixed(2)}
                 </span>
               )}
             </div>
