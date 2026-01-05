@@ -31,7 +31,7 @@ const HeroSection: React.FC = () => {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-foreground/10 backdrop-blur-sm mb-6"
             >
               <Sparkles className="h-4 w-4" />
-              <span className="text-sm font-medium">New Arrivals for 2024</span>
+              <span className="text-sm font-medium">New Arrivals for 2026</span>
             </motion.div>
 
             <motion.h1

@@ -107,7 +107,7 @@ const Footer: React.FC = () => {
         </div>
 
         <div className="border-t border-primary-foreground/20 mt-8 pt-8 text-center text-sm text-primary-foreground/60">
-          <p>© 2024 ModernStore. All rights reserved.</p>
+          <p>© 2026 ModernStore. All rights reserved.</p>
         </div>
       </div>
     </footer>
